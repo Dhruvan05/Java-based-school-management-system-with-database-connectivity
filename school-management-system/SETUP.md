@@ -35,7 +35,6 @@ Default Password: password
 
 ✅ Student Management with full CRUD operations
 ✅ Advanced Scheduling using Greedy Algorithm
-✅ Interval Tree for efficient conflict detection
 ✅ Student-Course Graph Analysis
 ✅ MySQL Database Integration with Connection Pooling
 ✅ Professional Swing GUI Interface
