@@ -60,9 +60,9 @@ school-management-system/
 Update your DB settings in `src/main/resources/application.properties`:
 
 ```properties
-db.url=jdbc:mysql://localhost:3306/school_management_system
-db.username=root
-db.password=root
+db.url=jdbc:mysql://localhost:3306/"db_name"
+db.username="db_uname"
+db.password="db_pwd"
 db.driver=com.mysql.cj.jdbc.Driver
 ```
 
