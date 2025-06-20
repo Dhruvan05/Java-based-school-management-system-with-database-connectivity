@@ -1,7 +1,9 @@
 package com.schoolmanagementsystem.service;
 
 import com.schoolmanagementsystem.dao.StudentDAO;
+import com.schoolmanagementsystem.dao.CourseDAO;
 import com.schoolmanagementsystem.model.Student;
+import com.schoolmanagementsystem.model.Course;
 import com.schoolmanagementsystem.util.ValidationUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,9 +17,11 @@ import java.util.List;
 public class StudentService {
     private static final Logger logger = LoggerFactory.getLogger(StudentService.class);
     private final StudentDAO studentDAO;
+    private final CourseDAO courseDAO; // Added for course operations
 
     public StudentService() {
         this.studentDAO = new StudentDAO();
+        this.courseDAO = new CourseDAO(); // Initialize CourseDAO
     }
 
     public List<Student> getAllStudents() throws SQLException {
@@ -50,6 +54,11 @@ public class StudentService {
         return studentDAO.delete(studentId);
     }
 
+    public List<Course> getAllCourses() throws SQLException {
+        logger.debug("Retrieving all courses");
+        return courseDAO.findAll();
+    }
+
     private void validateStudent(Student student) throws ValidationException {
         if (!ValidationUtil.isNotEmpty(student.getFirstName())) {
             throw new ValidationException("First name is required");
@@ -63,9 +72,9 @@ public class StudentService {
             throw new ValidationException("Valid email address is required");
         }
 
-        if (student.getPhoneNumber() != null && 
-            !student.getPhoneNumber().isEmpty() && 
-            !ValidationUtil.isValidPhoneNumber(student.getPhoneNumber())) {
+        if (student.getPhoneNumber() != null &&
+                !student.getPhoneNumber().isEmpty() &&
+                !ValidationUtil.isValidPhoneNumber(student.getPhoneNumber())) {
             throw new ValidationException("Invalid phone number format");
         }
     }

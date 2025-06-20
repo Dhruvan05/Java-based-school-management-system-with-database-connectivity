@@ -1,7 +1,6 @@
 package com.schoolmanagementsystem.service;
 
 import com.schoolmanagementsystem.algorithm.scheduling.GreedyScheduler;
-import com.schoolmanagementsystem.algorithm.scheduling.IntervalTree;
 import com.schoolmanagementsystem.dao.CourseDAO;
 import com.schoolmanagementsystem.dao.TimeSlotDAO;
 import com.schoolmanagementsystem.dao.CourseScheduleDAO;
@@ -12,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -54,13 +54,12 @@ public class SchedulingService {
 
         // Persist the generated schedule results to the database
         for (GreedyScheduler.ScheduleResult result : results) {
-            // Corrected: changed isScheduled() to isSuccessful()
             if (result.isSuccessful()) {
                 Course course = result.getCourse();
-                TimeSlot timeSlot = result.getAssignedTimeSlot(); // Use getAssignedTimeSlot()
+                TimeSlot timeSlot = result.getAssignedTimeSlot();
                 if (course != null && timeSlot != null) {
                     CourseSchedule newSchedule = new CourseSchedule(course.getCourseId(), timeSlot.getTimeSlotId());
-                    courseScheduleDAO.save(newSchedule); // Save the new schedule
+                    courseScheduleDAO.save(newSchedule);
                     logger.debug("Saved scheduled course: {} to time slot: {}", course.getCourseName(), timeSlot.toString());
                 }
             } else {
@@ -69,6 +68,39 @@ public class SchedulingService {
         }
 
         return results;
+    }
+
+    public List<Course> getAllCourses() throws SQLException {
+        return courseDAO.findAll();
+    }
+
+    public List<TimeSlot> getAllTimeSlots() throws SQLException {
+        return timeSlotDAO.findAll();
+    }
+
+    /**
+     * Adds a new TimeSlot.
+     * Expects the dayOfWeek as java.time.DayOfWeek and converts to TimeSlot.DayOfWeek.
+     * Now also takes a room parameter.
+     */
+    public boolean addTimeSlot(java.time.DayOfWeek javaDayOfWeek, LocalTime startTime, LocalTime endTime, String room) throws SQLException {
+        // Convert java.time.DayOfWeek to custom enum
+        TimeSlot.DayOfWeek dayOfWeek = TimeSlot.DayOfWeek.valueOf(javaDayOfWeek.name());
+        // Check for overlapping time slots on the same day
+        List<TimeSlot> existing = timeSlotDAO.findAll();
+        for (TimeSlot ts : existing) {
+            if (ts.getDayOfWeek().equals(dayOfWeek)) {
+                boolean overlap = !(ts.getEndTime().compareTo(startTime) <= 0 || ts.getStartTime().compareTo(endTime) >= 0);
+                if (overlap) return false;
+            }
+        }
+        TimeSlot newSlot = new TimeSlot();
+        newSlot.setDayOfWeek(dayOfWeek);
+        newSlot.setStartTime(startTime);
+        newSlot.setEndTime(endTime);
+        newSlot.setRoom(room); // <- set the room
+        timeSlotDAO.save(newSlot);
+        return true;
     }
 
     // Helper method to clear all schedules
@@ -81,36 +113,48 @@ public class SchedulingService {
         logger.info("Cleared {} existing course schedules.", allSchedules.size());
     }
 
-
+    /**
+     * Checks for schedule conflicts among all scheduled courses.
+     * Uses a simple pairwise check on timeslots rather than interval tree.
+     */
     public boolean hasScheduleConflicts() throws SQLException {
         logger.debug("Checking for schedule conflicts");
 
         List<CourseSchedule> schedules = courseScheduleDAO.findAll();
-        IntervalTree intervalTree = new IntervalTree();
+        List<TimeSlot> allTimeSlots = timeSlotDAO.findAll();
+        Map<Integer, TimeSlot> timeSlotMap = allTimeSlots.stream()
+                .collect(Collectors.toMap(TimeSlot::getTimeSlotId, ts -> ts));
 
+        // Build a list of scheduled time slots
+        List<TimeSlot> scheduledTimeSlots = new ArrayList<>();
         for (CourseSchedule schedule : schedules) {
-            TimeSlot timeSlot = timeSlotDAO.findById(schedule.getTimeSlotId());
+            TimeSlot timeSlot = timeSlotMap.get(schedule.getTimeSlotId());
             if (timeSlot != null) {
-                // Combine day, hour, and minute into a single linear time value for interval tree
-                // Each day gets 24 * 60 minutes offset.
-                int startMinutes = timeSlot.getStartTime().getHour() * 60 + timeSlot.getStartTime().getMinute();
-                int endMinutes = timeSlot.getEndTime().getHour() * 60 + timeSlot.getEndTime().getMinute();
-                int dayOffset = timeSlot.getDayOfWeek().ordinal() * 24 * 60; // MONDAY=0, TUESDAY=1, etc.
-
-                IntervalTree.Interval interval = new IntervalTree.Interval(
-                        dayOffset + startMinutes,
-                        dayOffset + endMinutes,
-                        schedule);
-
-                if (intervalTree.hasOverlap(interval)) {
-                    logger.warn("Schedule conflict detected for interval: {}", interval);
-                    return true;
-                }
-                intervalTree.insert(interval);
+                scheduledTimeSlots.add(timeSlot);
             }
         }
 
+        // Simple O(n^2) pairwise conflict detection
+        for (int i = 0; i < scheduledTimeSlots.size(); i++) {
+            for (int j = i + 1; j < scheduledTimeSlots.size(); j++) {
+                TimeSlot ts1 = scheduledTimeSlots.get(i);
+                TimeSlot ts2 = scheduledTimeSlots.get(j);
+                if (ts1.getDayOfWeek().equals(ts2.getDayOfWeek()) && isOverlap(ts1, ts2)) {
+                    logger.warn("Schedule conflict detected between time slots: {} and {}", ts1, ts2);
+                    return true;
+                }
+            }
+        }
         return false;
+    }
+
+    // Helper to check overlap between two TimeSlots
+    private boolean isOverlap(TimeSlot ts1, TimeSlot ts2) {
+        LocalTime start1 = ts1.getStartTime();
+        LocalTime end1 = ts1.getEndTime();
+        LocalTime start2 = ts2.getStartTime();
+        LocalTime end2 = ts2.getEndTime();
+        return !(end1.compareTo(start2) <= 0 || start1.compareTo(end2) >= 0);
     }
 
     public List<TimeSlot> findAvailableTimeSlots(Course course) throws SQLException {

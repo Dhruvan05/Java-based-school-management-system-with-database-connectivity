@@ -28,18 +28,31 @@ public class StudentCourseGraph {
     }
 
     public void addStudent(Student student) {
+        if (student == null) return;
         students.put(student.getStudentId(), student);
         studentToCourses.putIfAbsent(student.getStudentId(), new HashSet<>());
     }
 
     public void addCourse(Course course) {
+        if (course == null) return;
         courses.put(course.getCourseId(), course);
         courseToStudents.putIfAbsent(course.getCourseId(), new HashSet<>());
     }
 
     public void addEnrollment(Enrollment enrollment) {
+        if (enrollment == null) return;
         int studentId = enrollment.getStudentId();
         int courseId = enrollment.getCourseId();
+
+        // Defensive: Only add enrollment if student and course exist
+        if (!students.containsKey(studentId)) {
+            logger.warn("Student ID {} not found in graph when adding enrollment.", studentId);
+            return;
+        }
+        if (!courses.containsKey(courseId)) {
+            logger.warn("Course ID {} not found in graph when adding enrollment.", courseId);
+            return;
+        }
 
         studentToCourses.computeIfAbsent(studentId, k -> new HashSet<>()).add(courseId);
         courseToStudents.computeIfAbsent(courseId, k -> new HashSet<>()).add(studentId);
@@ -65,6 +78,25 @@ public class StudentCourseGraph {
         return courseToStudents.getOrDefault(courseId, Collections.emptySet());
     }
 
+    // === HELPER METHODS FOR UI ===
+
+    public List<Student> getAllStudents() {
+        // Sort alphabetically by full name for dropdown friendliness
+        List<Student> list = new ArrayList<>(students.values());
+        list.sort(Comparator.comparing(Student::getFullName, Comparator.nullsLast(String::compareToIgnoreCase)));
+        return list;
+    }
+
+    public Course getCourse(int courseId) {
+        return courses.get(courseId);
+    }
+
+    public List<Course> getAllCourses() {
+        List<Course> list = new ArrayList<>(courses.values());
+        list.sort(Comparator.comparing(Course::getCourseName, Comparator.nullsLast(String::compareToIgnoreCase)));
+        return list;
+    }
+
     /**
      * Find students with similar course loads using Jaccard similarity
      */
@@ -85,10 +117,10 @@ public class StudentCourseGraph {
             double similarity = calculateJaccardSimilarity(studentCourses, otherStudentCourses);
             if (similarity >= threshold) {
                 similarities.add(new StudentSimilarity(
-                    students.get(studentId), 
-                    students.get(otherStudentId), 
-                    similarity,
-                    getCommonCourses(studentCourses, otherStudentCourses)
+                        students.get(studentId),
+                        students.get(otherStudentId),
+                        similarity,
+                        getCommonCourses(studentCourses, otherStudentCourses)
                 ));
             }
         }
@@ -170,9 +202,9 @@ public class StudentCourseGraph {
                 .sorted(Map.Entry.<Integer, Double>comparingByValue().reversed())
                 .limit(maxRecommendations)
                 .map(entry -> new CourseRecommendation(
-                    courses.get(entry.getKey()), 
-                    entry.getValue(),
-                    "Based on similar students' enrollments"
+                        courses.get(entry.getKey()),
+                        entry.getValue(),
+                        "Based on similar students' enrollments"
                 ))
                 .collect(Collectors.toList());
     }
@@ -219,7 +251,7 @@ public class StudentCourseGraph {
         @Override
         public String toString() {
             return String.format("%s <-> %s (%.2f%% similar, %d common courses)",
-                    student1.getFullName(), student2.getFullName(), 
+                    student1.getFullName(), student2.getFullName(),
                     similarity * 100, commonCourses.size());
         }
     }
@@ -241,7 +273,7 @@ public class StudentCourseGraph {
 
         @Override
         public String toString() {
-            return String.format("%s (Score: %.2f) - %s", 
+            return String.format("%s (Score: %.2f) - %s",
                     course.toString(), score, reason);
         }
     }

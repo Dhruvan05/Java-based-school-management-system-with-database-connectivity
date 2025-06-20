@@ -1,7 +1,11 @@
 package com.schoolmanagementsystem.view;
 
 import com.schoolmanagementsystem.algorithm.graph.StudentCourseGraph;
+import com.schoolmanagementsystem.model.Student;
+import com.schoolmanagementsystem.model.Course;
+import com.schoolmanagementsystem.model.Enrollment;
 import com.schoolmanagementsystem.service.StudentService;
+import com.schoolmanagementsystem.service.EnrollmentService;
 import com.schoolmanagementsystem.service.SchedulingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,18 +14,17 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.List;
 
 /**
  * Main application window with tabbed interface
  */
-
-
-
 public class MainWindow extends JFrame {
     private static final Logger logger = LoggerFactory.getLogger(MainWindow.class);
 
     private final StudentService studentService;
     private final SchedulingService schedulingService;
+    private final EnrollmentService enrollmentService;
     private final StudentCourseGraph studentCourseGraph;
 
     private JTabbedPane tabbedPane;
@@ -33,6 +36,7 @@ public class MainWindow extends JFrame {
     public MainWindow() {
         this.studentService = new StudentService();
         this.schedulingService = new SchedulingService();
+        this.enrollmentService = new EnrollmentService();
         this.studentCourseGraph = new StudentCourseGraph();
 
         initializeComponents();
@@ -65,7 +69,6 @@ public class MainWindow extends JFrame {
         tabbedPane.addTab("📝 Enrollment", null, enrollmentPanel, "Manage student enrollments");
         tabbedPane.addTab("📅 Schedule", null, schedulePanel, "Course scheduling and timetables");
 
-
         add(tabbedPane, BorderLayout.CENTER);
 
         // Status bar
@@ -84,13 +87,8 @@ public class MainWindow extends JFrame {
 
         // Tools menu
         JMenu toolsMenu = new JMenu("Tools");
-        JMenuItem generateScheduleItem = new JMenuItem("Generate Optimal Schedule");
-        generateScheduleItem.addActionListener(e -> generateOptimalSchedule());
-
         JMenuItem analyzeGraphItem = new JMenuItem("Analyze Student Relationships");
         analyzeGraphItem.addActionListener(e -> analyzeStudentRelationships());
-
-        toolsMenu.add(generateScheduleItem);
         toolsMenu.add(analyzeGraphItem);
 
         // Help menu
@@ -105,7 +103,6 @@ public class MainWindow extends JFrame {
 
         setJMenuBar(menuBar);
     }
-
 
     private JPanel createStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -137,100 +134,77 @@ public class MainWindow extends JFrame {
         });
     }
 
-    private void generateOptimalSchedule() {
-        SwingUtilities.invokeLater(() -> {
-            try {
-                JDialog progressDialog = new JDialog(this, "Generating Schedule", true);
-                JProgressBar progressBar = new JProgressBar();
-                progressBar.setIndeterminate(true);
-                progressBar.setString("Optimizing course schedule...");
-                progressBar.setStringPainted(true);
-
-                progressDialog.add(progressBar);
-                progressDialog.setSize(300, 100);
-                progressDialog.setLocationRelativeTo(this);
-
-                SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
-                    @Override
-                    protected Void doInBackground() throws Exception {
-                        // Run scheduling algorithm
-                        schedulingService.generateOptimalSchedule();
-                        return null;
-                    }
-
-                    @Override
-                    protected void done() {
-                        progressDialog.dispose();
-                        try {
-                            get(); // Check for exceptions
-                            JOptionPane.showMessageDialog(MainWindow.this,
-                                "Optimal schedule generated successfully!",
-                                "Success",
-                                JOptionPane.INFORMATION_MESSAGE);
-                            schedulePanel.refreshData();
-                        } catch (Exception e) {
-                            logger.error("Failed to generate schedule", e);
-                            JOptionPane.showMessageDialog(MainWindow.this,
-                                "Failed to generate schedule: " + e.getMessage(),
-                                "Error",
-                                JOptionPane.ERROR_MESSAGE);
-                        }
-                    }
-                };
-
-                worker.execute();
-                progressDialog.setVisible(true);
-
-            } catch (Exception e) {
-                logger.error("Error starting schedule generation", e);
-                JOptionPane.showMessageDialog(this,
-                    "Error: " + e.getMessage(),
-                    "Schedule Generation Error",
-                    JOptionPane.ERROR_MESSAGE);
-            }
-        });
-    }
-
     private void analyzeStudentRelationships() {
         SwingUtilities.invokeLater(() -> {
             try {
+                populateStudentCourseGraph();
                 // Show graph analysis dialog
                 GraphAnalysisDialog dialog = new GraphAnalysisDialog(this, studentCourseGraph);
                 dialog.setVisible(true);
             } catch (Exception e) {
                 logger.error("Error showing graph analysis", e);
                 JOptionPane.showMessageDialog(this,
-                    "Error: " + e.getMessage(),
-                    "Graph Analysis Error",
-                    JOptionPane.ERROR_MESSAGE);
+                        "Error: " + e.getMessage(),
+                        "Graph Analysis Error",
+                        JOptionPane.ERROR_MESSAGE);
             }
         });
     }
 
+    /**
+     * Populates the studentCourseGraph with all students, courses, and enrollments from the database.
+     * Call this before showing the analysis dialog to ensure latest data.
+     */
+    private void populateStudentCourseGraph() {
+        studentCourseGraph.clear();
+        try {
+            List<Student> students = studentService.getAllStudents();
+            List<Course> courses = studentService.getAllCourses();
+            List<Enrollment> enrollments = enrollmentService.getAllEnrollments();
+
+            for (Student student : students) {
+                studentCourseGraph.addStudent(student);
+            }
+            for (Course course : courses) {
+                studentCourseGraph.addCourse(course);
+            }
+            for (Enrollment enrollment : enrollments) {
+                studentCourseGraph.addEnrollment(enrollment);
+            }
+            logger.info("StudentCourseGraph populated: {} students, {} courses, {} enrollments",
+                    studentCourseGraph.getStudentCount(),
+                    studentCourseGraph.getCourseCount(),
+                    studentCourseGraph.getEnrollmentCount());
+        } catch (Exception ex) {
+            logger.error("Failed to populate StudentCourseGraph", ex);
+            JOptionPane.showMessageDialog(this,
+                    "Failed to load student, course, or enrollment data:\n" + ex.getMessage(),
+                    "Data Load Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     private void showAboutDialog() {
         String message = "School Management System\n" +
-                        "Version 1.0\n\n" +
-                        "A comprehensive Java application for managing\n" +
-                        "educational institutions with advanced scheduling\n" +
-                        "algorithms and relationship analysis.\n\n" +
-                        "Features:\n" +
-                        "• Student and Course Management\n" +
-                        "• Greedy Scheduling Algorithm\n" +
-                        "• Interval Tree Optimization\n" +
-                        "• Graph-based Relationship Analysis\n" +
-                        "• MySQL Database Integration";
+                "Version 1.0\n\n" +
+                "A comprehensive Java application for managing\n" +
+                "educational institutions with relationship analysis.\n\n" +
+                "Features:\n" +
+                "• Student and Course Management\n" +
+                "• Graph-based Relationship Analysis\n" +
+                "• MySQL Database Integration";
 
         JOptionPane.showMessageDialog(this,
-            message,
-            "About School Management System",
-            JOptionPane.INFORMATION_MESSAGE);
+                message,
+                "About School Management System",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void handleExit() {
         int choice = JOptionPane.showConfirmDialog(this,
-            "Are you sure you want to exit?",
-            "Confirm Exit",
-            JOptionPane.YES_NO_OPTION);
+                "Are you sure you want to exit?",
+                "Confirm Exit",
+                JOptionPane.YES_NO_OPTION);
 
         if (choice == JOptionPane.YES_OPTION) {
             logger.info("Application shutting down");

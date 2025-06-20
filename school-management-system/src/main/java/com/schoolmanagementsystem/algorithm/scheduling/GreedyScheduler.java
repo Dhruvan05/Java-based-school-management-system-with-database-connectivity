@@ -10,7 +10,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Greedy algorithm implementation for course scheduling
+ * Greedy algorithm implementation for course scheduling (interval tree removed)
  */
 public class GreedyScheduler {
     private static final Logger logger = LoggerFactory.getLogger(GreedyScheduler.class);
@@ -50,11 +50,11 @@ public class GreedyScheduler {
         public String getReason() { return reason; }
     }
 
-    private final IntervalTree scheduledIntervals;
+    private final List<CourseTimeSlot> scheduledClasses;
     private final List<TimeSlot> availableTimeSlots;
 
     public GreedyScheduler(List<TimeSlot> availableTimeSlots) {
-        this.scheduledIntervals = new IntervalTree();
+        this.scheduledClasses = new ArrayList<>();
         this.availableTimeSlots = new ArrayList<>(availableTimeSlots);
 
         // Sort time slots by end time (greedy choice)
@@ -91,9 +91,9 @@ public class GreedyScheduler {
             results.add(result);
         }
 
-        logger.info("Scheduling completed. Successful: {}, Failed: {}", 
-                   results.stream().mapToInt(r -> r.isSuccessful() ? 1 : 0).sum(),
-                   results.stream().mapToInt(r -> r.isSuccessful() ? 0 : 1).sum());
+        logger.info("Scheduling completed. Successful: {}, Failed: {}",
+                results.stream().mapToInt(r -> r.isSuccessful() ? 1 : 0).sum(),
+                results.stream().mapToInt(r -> r.isSuccessful() ? 0 : 1).sum());
 
         return results;
     }
@@ -125,46 +125,40 @@ public class GreedyScheduler {
     }
 
     private boolean canScheduleAt(TimeSlot timeSlot) {
-        int startMinutes = timeSlotToMinutes(timeSlot.getStartTime());
-        int endMinutes = timeSlotToMinutes(timeSlot.getEndTime());
-        int dayOffset = timeSlot.getDayOfWeek().ordinal() * 24 * 60; // Convert day to minutes
+        // Check for overlap with already scheduled classes
+        for (CourseTimeSlot cts : scheduledClasses) {
+            if (cts.getTimeSlot().getDayOfWeek().equals(timeSlot.getDayOfWeek()) &&
+                    isOverlap(cts.getTimeSlot(), timeSlot)) {
+                return false;
+            }
+        }
+        return true;
+    }
 
-        IntervalTree.Interval queryInterval = new IntervalTree.Interval(
-                dayOffset + startMinutes, 
-                dayOffset + endMinutes, 
-                timeSlot);
-
-        return !scheduledIntervals.hasOverlap(queryInterval);
+    private boolean isOverlap(TimeSlot ts1, TimeSlot ts2) {
+        LocalTime start1 = ts1.getStartTime();
+        LocalTime end1 = ts1.getEndTime();
+        LocalTime start2 = ts2.getStartTime();
+        LocalTime end2 = ts2.getEndTime();
+        return !(end1.compareTo(start2) <= 0 || start1.compareTo(end2) >= 0);
     }
 
     private void addToSchedule(Course course, TimeSlot timeSlot) {
-        int startMinutes = timeSlotToMinutes(timeSlot.getStartTime());
-        int endMinutes = timeSlotToMinutes(timeSlot.getEndTime());
-        int dayOffset = timeSlot.getDayOfWeek().ordinal() * 24 * 60;
-
-        IntervalTree.Interval interval = new IntervalTree.Interval(
-                dayOffset + startMinutes, 
-                dayOffset + endMinutes, 
-                new CourseTimeSlot(course, timeSlot));
-
-        scheduledIntervals.insert(interval);
-    }
-
-    private int timeSlotToMinutes(LocalTime time) {
-        return time.getHour() * 60 + time.getMinute();
+        scheduledClasses.add(new CourseTimeSlot(course, timeSlot));
     }
 
     public List<CourseTimeSlot> getScheduledClasses() {
-        return scheduledIntervals.getAllIntervals().stream()
-                .map(interval -> (CourseTimeSlot) interval.getData())
-                .collect(Collectors.toList());
+        return new ArrayList<>(scheduledClasses);
     }
 
     public boolean hasConflicts() {
-        List<IntervalTree.Interval> intervals = scheduledIntervals.getAllIntervals();
-        for (int i = 0; i < intervals.size(); i++) {
-            for (int j = i + 1; j < intervals.size(); j++) {
-                if (intervals.get(i).overlaps(intervals.get(j))) {
+        // Brute force check for pairwise conflicts
+        for (int i = 0; i < scheduledClasses.size(); i++) {
+            for (int j = i + 1; j < scheduledClasses.size(); j++) {
+                CourseTimeSlot cts1 = scheduledClasses.get(i);
+                CourseTimeSlot cts2 = scheduledClasses.get(j);
+                if (cts1.getTimeSlot().getDayOfWeek().equals(cts2.getTimeSlot().getDayOfWeek()) &&
+                        isOverlap(cts1.getTimeSlot(), cts2.getTimeSlot())) {
                     return true;
                 }
             }
@@ -173,7 +167,7 @@ public class GreedyScheduler {
     }
 
     public void clearSchedule() {
-        scheduledIntervals.clear();
+        scheduledClasses.clear();
     }
 
     public static class CourseTimeSlot {

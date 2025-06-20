@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -170,18 +169,28 @@ public class EnrollmentDAO {
             stmt.setInt(1, enrollmentId);
 
             int rowsAffected = stmt.executeUpdate();
-            logger.info("Deleted enrollment with ID: {}", enrollmentId);
+            logger.info("Deleted enrollment with ID: {}, rows affected: {}", enrollmentId, rowsAffected);
             return rowsAffected > 0;
         }
     }
 
+    /**
+     * Sets parameters for an Enrollment insert/update statement.
+     */
     private void setEnrollmentParameters(PreparedStatement stmt, Enrollment enrollment) throws SQLException {
         stmt.setInt(1, enrollment.getStudentId());
         stmt.setInt(2, enrollment.getCourseId());
-        stmt.setDate(3, enrollment.getEnrollmentDate() != null ? Date.valueOf(enrollment.getEnrollmentDate()) : null);
+        if (enrollment.getEnrollmentDate() != null) {
+            stmt.setDate(3, Date.valueOf(enrollment.getEnrollmentDate()));
+        } else {
+            stmt.setNull(3, Types.DATE);
+        }
         stmt.setString(4, enrollment.getGrade());
     }
 
+    /**
+     * Maps a ResultSet row to an Enrollment object.
+     */
     private Enrollment mapResultSetToEnrollment(ResultSet rs) throws SQLException {
         Enrollment enrollment = new Enrollment();
         enrollment.setEnrollmentId(rs.getInt("enrollmentId"));
@@ -191,11 +200,13 @@ public class EnrollmentDAO {
         Date enrollmentDate = rs.getDate("enrollmentDate");
         if (enrollmentDate != null) {
             enrollment.setEnrollmentDate(enrollmentDate.toLocalDate());
+        } else {
+            enrollment.setEnrollmentDate(null);
         }
 
         enrollment.setGrade(rs.getString("grade"));
-        enrollment.setStudentName(rs.getString("studentName")); // From JOIN CONCAT
-        enrollment.setCourseName(rs.getString("courseName"));   // From JOIN
+        enrollment.setStudentName(rs.getString("studentName"));
+        enrollment.setCourseName(rs.getString("courseName"));
 
         return enrollment;
     }
